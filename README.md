@@ -1,11 +1,11 @@
 # ArmyKnife CLI - Semantic Code Search & Intelligence
 
 [![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8?style=flat-square&logo=go)](https://go.dev)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/armyknifelabs-platform/armyknife-cli/release.yml?branch=master&style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/actions)
-[![Latest Release](https://img.shields.io/github/v/release/armyknifelabs-platform/armyknife-cli?style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/armyknifelabs-platform/armyknife-cli/release.yml?branch=main&style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/armyknifelabs-platform/armyknife-cli?style=flat-square&logo=github&color=green)](https://github.com/armyknifelabs-platform/armyknife-cli/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/armyknifelabs-platform/armyknife-cli?style=flat-square)](https://goreportcard.com/report/github.com/armyknifelabs-platform/armyknife-cli)
-[![Downloads](https://img.shields.io/github/downloads/armyknifelabs-platform/armyknife-cli/total?style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/armyknifelabs-platform/armyknife-cli)](https://goreportcard.com/report/github.com/armyknifelabs-platform/armyknife-cli)
+[![Code Intelligence](https://img.shields.io/badge/Code-Intelligence-blue?style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/codeinsight-ai)
 
 ArmyKnife is a powerful command-line tool for semantic code search and intelligence across your organization's repositories. Ask natural language questions about your codebase and get intelligent results powered by AI embeddings.
 
