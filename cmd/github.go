@@ -40,7 +40,7 @@ var reposCmd = &cobra.Command{
 		output.Header("User Repositories")
 		output.Info("Fetching repositories...")
 
-		resp, err := c.Get("/github/user-repos")
+		resp, err := c.Get("/github/user/repositories")
 		if err != nil {
 			return fmt.Errorf("failed to fetch repositories: %w", err)
 		}
