@@ -52,7 +52,7 @@ var doraGetCmd = &cobra.Command{
 
 		c := client.NewClient(cfg)
 
-		path := fmt.Sprintf("/metrics/dora?owner=%s&repo=%s", owner, repo)
+		path := fmt.Sprintf("/github/dora?owner=%s&repo=%s", owner, repo)
 		if timeRange != "" {
 			path += fmt.Sprintf("&timeRange=%s", timeRange)
 		}
