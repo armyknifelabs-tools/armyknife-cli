@@ -29,27 +29,24 @@ jobs:
           VERSION="${{ steps.tag_name.outputs.VERSION }}"
           echo "Building ArmyKnife CLI version: $VERSION"
 
-          # Update cmd/root.go if it exists
+          # Update hardcoded version in cmd/root.go
           if [ -f "cmd/root.go" ]; then
-            sed -i "s/Version = \".*\"/Version = \"$VERSION\"/g" cmd/root.go
-            echo "Updated version in cmd/root.go"
+            sed -i "s/ArmyKnife CLI v[0-9.]*\"/ArmyKnife CLI $VERSION\"/g" cmd/root.go
+            echo "Updated version string in cmd/root.go to $VERSION"
+            grep -n "ArmyKnife CLI" cmd/root.go || true
           fi
 
-          # Update cmd/version.go if it exists
+          # Fallback: Update Version constant if it exists
+          if grep -q "Version = " cmd/root.go; then
+            sed -i "s/Version = \".*\"/Version = \"$VERSION\"/g" cmd/root.go
+            echo "Updated Version constant in cmd/root.go"
+          fi
+
+          # Check cmd/version.go for version string
           if [ -f "cmd/version.go" ]; then
+            sed -i "s/ArmyKnife CLI v[0-9.]*\"/ArmyKnife CLI $VERSION\"/g" cmd/version.go
             sed -i "s/version = \".*\"/version = \"$VERSION\"/g" cmd/version.go
             echo "Updated version in cmd/version.go"
-          fi
-
-          # Create version file if neither exists
-          if [ ! -f "cmd/root.go" ] && [ ! -f "cmd/version.go" ]; then
-            mkdir -p internal/version
-            cat > internal/version/version.go << EOF
-          package version
-
-          const Version = "$VERSION"
-          EOF
-            echo "Created internal/version/version.go with version $VERSION"
           fi
 
       - name: Build for Linux (amd64)
