@@ -1,4 +1,4 @@
-module github.com/armyknifelabs-platform/seip-cli
+module github.com/armyknifelabs-platform/armyknife-cli
 
 go 1.21.5
 

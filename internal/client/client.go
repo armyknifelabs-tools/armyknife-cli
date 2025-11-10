@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/armyknifelabs-platform/seip-cli/internal/config"
+	"github.com/armyknifelabs-platform/armyknife-cli/internal/config"
 )
 
 // Client is an HTTP client for the SEIP API

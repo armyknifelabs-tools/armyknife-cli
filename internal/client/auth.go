@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/armyknifelabs-platform/seip-cli/internal/config"
-	"github.com/armyknifelabs-platform/seip-cli/pkg/output"
+	"github.com/armyknifelabs-platform/armyknife-cli/internal/config"
+	"github.com/armyknifelabs-platform/armyknife-cli/pkg/output"
 )
 
 // DeviceCodeResponse represents the response from initiating device flow

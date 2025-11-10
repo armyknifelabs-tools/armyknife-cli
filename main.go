@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/armyknifelabs-platform/seip-cli/cmd"
+	"github.com/armyknifelabs-platform/armyknife-cli/cmd"
 )
 
 func main() {

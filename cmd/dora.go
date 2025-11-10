@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/armyknifelabs-platform/seip-cli/internal/client"
-	"github.com/armyknifelabs-platform/seip-cli/internal/config"
-	"github.com/armyknifelabs-platform/seip-cli/internal/types"
-	"github.com/armyknifelabs-platform/seip-cli/pkg/output"
+	"github.com/armyknifelabs-platform/armyknife-cli/internal/client"
+	"github.com/armyknifelabs-platform/armyknife-cli/internal/config"
+	"github.com/armyknifelabs-platform/armyknife-cli/internal/types"
+	"github.com/armyknifelabs-platform/armyknife-cli/pkg/output"
 	"github.com/spf13/cobra"
 )
 
