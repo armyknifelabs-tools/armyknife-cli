@@ -1,8 +1,11 @@
 # ArmyKnife CLI - Semantic Code Search & Intelligence
 
-![Go Version](https://img.shields.io/github/go-mod/go-version/armyknifelabs-platform/armyknife-cli)
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Release](https://img.shields.io/github/v/release/armyknifelabs-platform/armyknife-cli)
+[![Go Version](https://img.shields.io/badge/go-1.21+-00ADD8?style=flat-square&logo=go)](https://go.dev)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/armyknifelabs-platform/armyknife-cli/release.yml?branch=master&style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/actions)
+[![Latest Release](https://img.shields.io/github/v/release/armyknifelabs-platform/armyknife-cli?style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/armyknifelabs-platform/armyknife-cli?style=flat-square)](https://goreportcard.com/report/github.com/armyknifelabs-platform/armyknife-cli)
+[![Downloads](https://img.shields.io/github/downloads/armyknifelabs-platform/armyknife-cli/total?style=flat-square&logo=github)](https://github.com/armyknifelabs-platform/armyknife-cli/releases)
 
 ArmyKnife is a powerful command-line tool for semantic code search and intelligence across your organization's repositories. Ask natural language questions about your codebase and get intelligent results powered by AI embeddings.
 
@@ -252,29 +255,45 @@ GOOS=darwin GOARCH=amd64 go build -o armyknife-darwin-amd64
 GOOS=windows GOARCH=amd64 go build -o armyknife-windows-amd64.exe
 ```
 
+## Related Projects
+
+ArmyKnife is available in multiple languages for different ecosystems:
+
+| Language | Project | Package | Repo |
+|----------|---------|---------|------|
+| **Go** | armyknife-cli | [GitHub Releases](https://github.com/armyknifelabs-platform/armyknife-cli/releases) | [armyknife-cli](https://github.com/armyknifelabs-platform/armyknife-cli) |
+| **Python** | armyknife-py | [PyPI](https://pypi.org/project/armyknife-cli/) | [armyknife-py](https://github.com/armyknifelabs-platform/armyknife-py) |
+| **TypeScript** | armyknife-ts | [NPM](https://www.npmjs.com/package/armyknife-cli) | [armyknife-ts](https://github.com/armyknifelabs-platform/armyknife-ts) |
+
+All clients provide identical functionality with language-native idioms and best practices.
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ## Roadmap
 
-### Phase 1 (Current)
+### Phase 1 (Complete ✅)
 - [x] Code indexing and semantic search
 - [x] Hybrid search (vector + keyword)
 - [x] Performance metrics
 - [x] Multi-repository support
+- [x] Go CLI (armyknife-cli)
+- [x] Python client library (armyknife-py) - [GitHub](https://github.com/armyknifelabs-platform/armyknife-py)
+- [x] TypeScript/JavaScript client (armyknife-ts) - [GitHub](https://github.com/armyknifelabs-platform/armyknife-ts)
 
-### Phase 2 (Planned)
-- [ ] Python client library (pip install)
-- [ ] TypeScript/JavaScript client (npm install)
+### Phase 2 (In Progress)
 - [ ] Code diff summarization
 - [ ] Automatic refactoring suggestions
-
-### Phase 3 (Future)
 - [ ] IDE plugins (VSCode, JetBrains)
-- [ ] Test generation from code
-- [ ] Documentation generation
-- [ ] Multi-tenant support
+- [ ] Batch query API for bulk operations
+
+### Phase 3 (Planned)
+- [ ] Test generation from code context
+- [ ] Documentation generation from codebase
+- [ ] Multi-tenant support for SaaS
+- [ ] Advanced code metrics and insights
+- [ ] CI/CD integration plugins
 
 ## License
 
