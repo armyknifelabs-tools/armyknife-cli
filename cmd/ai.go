@@ -12,7 +12,6 @@ import (
 var (
 	codeContent string
 	language    string
-	query       string
 )
 
 var aiCmd = &cobra.Command{
@@ -68,53 +67,6 @@ var copilotCmd = &cobra.Command{
 	},
 }
 
-var ragCmd = &cobra.Command{
-	Use:   "rag",
-	Short: "RAG (Retrieval Augmented Generation) queries",
-	Long:  `Query the RAG system for context-aware AI responses`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if query == "" {
-			return fmt.Errorf("--query flag is required")
-		}
-
-		cfg, err := config.Load()
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
-
-		if !cfg.IsAuthenticated() {
-			return fmt.Errorf("not authenticated. Run 'armyknife auth login' first")
-		}
-
-		if apiURL != "" {
-			cfg.APIURL = apiURL
-		}
-
-		c := client.NewClient(cfg)
-
-		output.Header("RAG Query")
-		output.Info(fmt.Sprintf("Query: %s", query))
-		output.Info("Processing...")
-
-		reqBody := map[string]interface{}{
-			"query": query,
-		}
-
-		resp, err := c.Post("/ai/rag/query", reqBody)
-		if err != nil {
-			return fmt.Errorf("failed to execute RAG query: %w", err)
-		}
-
-		if jsonOut {
-			return output.JSON(resp)
-		}
-
-		output.Success("\n✅ Response:")
-		fmt.Println()
-		return output.JSON(resp.Data)
-	},
-}
-
 var aiHealthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Check AI service health",
@@ -151,15 +103,11 @@ var aiHealthCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(aiCmd)
 	aiCmd.AddCommand(copilotCmd)
-	aiCmd.AddCommand(ragCmd)
 	aiCmd.AddCommand(aiHealthCmd)
 
 	copilotCmd.Flags().StringVarP(&codeContent, "code", "c", "", "Code to analyze (required)")
 	copilotCmd.Flags().StringVarP(&language, "language", "l", "javascript", "Programming language")
 	copilotCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output raw JSON")
-
-	ragCmd.Flags().StringVarP(&query, "query", "q", "", "Query string (required)")
-	ragCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output raw JSON")
 
 	aiHealthCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output raw JSON")
 }
