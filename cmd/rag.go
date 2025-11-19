@@ -58,6 +58,7 @@ var ragDocsCmd = &cobra.Command{
 
 		reqBody := map[string]interface{}{
 			"query": query,
+			"repository_id": 1, // Default to armyknifelabs-platform/armyknifelabs-idp-seip-platform
 			"limit": ragLimit,
 			"useAI": useAI,
 		}
@@ -137,6 +138,7 @@ var ragPdfCmd = &cobra.Command{
 
 		reqBody := map[string]interface{}{
 			"query": query,
+			"repository_id": 1, // Default to armyknifelabs-platform/armyknifelabs-idp-seip-platform
 			"limit": ragLimit,
 		}
 
@@ -208,10 +210,12 @@ var ragCodeCmd = &cobra.Command{
 
 		reqBody := map[string]interface{}{
 			"query": query,
+			"repository_id": 1, // Default to armyknifelabs-platform/armyknifelabs-idp-seip-platform
 			"limit": ragLimit,
 		}
 
-		resp, err := c.Post("/rag/query", reqBody)
+		// Use hybrid search endpoint which queries existing code_embeddings table
+		resp, err := c.Post("/code/query/hybrid", reqBody)
 		if err != nil {
 			return fmt.Errorf("failed to query code RAG: %w", err)
 		}
@@ -313,7 +317,7 @@ var ragStatusCmd = &cobra.Command{
 		}{
 			{"Documentation RAG", "/ai/docs/status"},
 			{"PDF RAG", "/ai/rag/status"},
-			{"Code RAG", "/rag/status"},
+			{"Code RAG", "/code/stats"},
 		}
 
 		for _, ep := range endpoints {
