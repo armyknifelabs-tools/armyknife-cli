@@ -14,97 +14,107 @@ import (
 )
 
 var (
-	localOllamaURL string
-	localModel     string
-	localStream    bool
-	localTimeout   int
+	localAPIURL  string
+	localModel   string
+	localStream  bool
+	localTimeout int
+	localBackend string // "auto", "node-llm", "ollama"
 )
 
 // localCmd represents the local AI command group
 var localCmd = &cobra.Command{
 	Use:   "local",
-	Short: "Local AI model operations (Ollama, node-llm)",
+	Short: "Local AI model operations (node-llm, OpenAI-compatible)",
 	Long: `Commands for testing and using locally running AI models.
 
 Supports:
-- Ollama (default port 11434)
-- node-llm (OpenAI-compatible API)
+- node-llm (OpenAI-compatible API) - PRIMARY
 - Any OpenAI-compatible local endpoint
+- Ollama (legacy, fallback)
+
+The armyknife-code fork uses node-llm which provides an OpenAI-compatible API.
 
 Examples:
   armyknife local status
   armyknife local models
-  armyknife local chat "Explain this code" --model qwen2.5-coder:3b
+  armyknife local chat "Explain this code" --model gpt-4
   armyknife local generate "Write a function to sort an array"
-  armyknife local test --model phi3:mini`,
+  armyknife local test --model phi3`,
 }
 
-// localStatusCmd checks local Ollama status
+// localStatusCmd checks local AI status
 var localStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Check local Ollama/node-llm status",
-	Long:  `Check if Ollama or node-llm is running and accessible.`,
+	Short: "Check local AI service status",
+	Long:  `Check if the local AI service (node-llm) is running and accessible.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("🔍 Checking local AI status...\n")
-		fmt.Printf("   URL: %s\n\n", localOllamaURL)
+		fmt.Printf("   URL: %s\n", localAPIURL)
+		fmt.Printf("   Backend: %s\n\n", localBackend)
 
 		client := &http.Client{Timeout: time.Duration(localTimeout) * time.Second}
 
-		// Check Ollama API
-		resp, err := client.Get(localOllamaURL)
-		if err != nil {
-			fmt.Printf("❌ Cannot connect to %s\n", localOllamaURL)
-			fmt.Printf("   Error: %v\n\n", err)
-			fmt.Println("Make sure Ollama is running:")
-			fmt.Println("  1. Install: brew install ollama")
-			fmt.Println("  2. Start:   ollama serve")
-			fmt.Println("  3. Pull:    ollama pull qwen2.5-coder:3b")
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == 200 {
-			body, _ := io.ReadAll(resp.Body)
-			fmt.Printf("✅ Ollama is running!\n")
-			fmt.Printf("   Response: %s\n\n", strings.TrimSpace(string(body)))
-
-			// Get version
-			versionResp, err := client.Get(localOllamaURL + "/api/version")
+		// Try OpenAI-compatible endpoint first (node-llm)
+		if localBackend == "auto" || localBackend == "node-llm" {
+			resp, err := client.Get(localAPIURL + "/v1/models")
 			if err == nil {
-				defer versionResp.Body.Close()
-				var version map[string]interface{}
-				if json.NewDecoder(versionResp.Body).Decode(&version) == nil {
-					fmt.Printf("   Version: %v\n", version["version"])
-				}
-			}
-
-			// List models
-			fmt.Println("\n📦 Installed Models:")
-			modelsResp, err := client.Get(localOllamaURL + "/api/tags")
-			if err == nil {
-				defer modelsResp.Body.Close()
-				var models map[string]interface{}
-				if json.NewDecoder(modelsResp.Body).Decode(&models) == nil {
-					if modelList, ok := models["models"].([]interface{}); ok {
-						if len(modelList) == 0 {
-							fmt.Println("   No models installed. Pull one with: ollama pull qwen2.5-coder:3b")
-						}
-						for _, m := range modelList {
-							if model, ok := m.(map[string]interface{}); ok {
-								name := model["name"].(string)
-								size := ""
-								if s, ok := model["size"].(float64); ok {
-									size = fmt.Sprintf(" (%.1f GB)", s/1024/1024/1024)
+				defer resp.Body.Close()
+				if resp.StatusCode == 200 {
+					var models map[string]interface{}
+					if json.NewDecoder(resp.Body).Decode(&models) == nil {
+						fmt.Printf("✅ node-llm (OpenAI-compatible) is running!\n\n")
+						if data, ok := models["data"].([]interface{}); ok {
+							fmt.Printf("📦 Available Models (%d):\n", len(data))
+							for _, m := range data {
+								if model, ok := m.(map[string]interface{}); ok {
+									fmt.Printf("   - %s\n", model["id"])
 								}
-								fmt.Printf("   - %s%s\n", name, size)
 							}
 						}
+						return
 					}
 				}
 			}
-		} else {
-			fmt.Printf("⚠️  Unexpected response: %d\n", resp.StatusCode)
 		}
+
+		// Fallback to Ollama check
+		if localBackend == "auto" || localBackend == "ollama" {
+			ollamaURL := strings.Replace(localAPIURL, "/v1", "", 1)
+			if !strings.Contains(ollamaURL, ":11434") {
+				ollamaURL = "http://localhost:11434"
+			}
+			resp, err := client.Get(ollamaURL + "/api/tags")
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == 200 {
+					var result map[string]interface{}
+					if json.NewDecoder(resp.Body).Decode(&result) == nil {
+						fmt.Printf("✅ Ollama is running!\n\n")
+						if models, ok := result["models"].([]interface{}); ok {
+							fmt.Printf("📦 Installed Models (%d):\n", len(models))
+							for _, m := range models {
+								if model, ok := m.(map[string]interface{}); ok {
+									name := model["name"].(string)
+									size := ""
+									if s, ok := model["size"].(float64); ok {
+										size = fmt.Sprintf(" (%.1f GB)", s/1024/1024/1024)
+									}
+									fmt.Printf("   - %s%s\n", name, size)
+								}
+							}
+						}
+						return
+					}
+				}
+			}
+		}
+
+		fmt.Printf("❌ Cannot connect to local AI service\n")
+		fmt.Printf("   Tried: %s\n\n", localAPIURL)
+		fmt.Println("Make sure node-llm or the AI backend is running:")
+		fmt.Println("  1. Start armyknife-code (VS Code fork)")
+		fmt.Println("  2. Check that the AI service is enabled")
+		fmt.Println("  3. Verify the URL with --api-url flag")
 	},
 }
 
@@ -112,13 +122,42 @@ var localStatusCmd = &cobra.Command{
 var localModelsCmd = &cobra.Command{
 	Use:   "models",
 	Short: "List available local models",
-	Long:  `List all models available in the local Ollama instance.`,
+	Long:  `List all models available in the local AI service.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("📦 Local Models (%s)\n", localOllamaURL)
+		fmt.Printf("📦 Local Models (%s)\n", localAPIURL)
 		fmt.Println(strings.Repeat("-", 50))
 
 		client := &http.Client{Timeout: time.Duration(localTimeout) * time.Second}
-		resp, err := client.Get(localOllamaURL + "/api/tags")
+
+		// Try OpenAI-compatible endpoint (node-llm)
+		resp, err := client.Get(localAPIURL + "/v1/models")
+		if err == nil {
+			defer resp.Body.Close()
+			var result map[string]interface{}
+			if json.NewDecoder(resp.Body).Decode(&result) == nil {
+				if data, ok := result["data"].([]interface{}); ok {
+					if len(data) == 0 {
+						fmt.Println("No models available.")
+						return
+					}
+					for _, m := range data {
+						if model, ok := m.(map[string]interface{}); ok {
+							id := model["id"].(string)
+							owned := ""
+							if owner, ok := model["owned_by"].(string); ok {
+								owned = fmt.Sprintf(" (by %s)", owner)
+							}
+							fmt.Printf("  %s%s\n", id, owned)
+						}
+					}
+					return
+				}
+			}
+		}
+
+		// Fallback to Ollama
+		ollamaURL := "http://localhost:11434"
+		resp, err = client.Get(ollamaURL + "/api/tags")
 		if err != nil {
 			fmt.Printf("❌ Error: %v\n", err)
 			return
@@ -134,47 +173,31 @@ var localModelsCmd = &cobra.Command{
 		if models, ok := result["models"].([]interface{}); ok {
 			if len(models) == 0 {
 				fmt.Println("No models installed.")
-				fmt.Println("\nRecommended models for code:")
-				fmt.Println("  ollama pull qwen2.5-coder:3b     # Fast, good for completions")
-				fmt.Println("  ollama pull qwen2.5-coder:7b     # Better quality")
-				fmt.Println("  ollama pull deepseek-coder:6.7b  # Strong coding model")
-				fmt.Println("  ollama pull codellama:7b         # Meta's code model")
-				fmt.Println("  ollama pull phi3:mini            # Microsoft's small model")
 				return
 			}
-
 			for _, m := range models {
 				model := m.(map[string]interface{})
 				name := model["name"].(string)
-
 				sizeStr := ""
 				if size, ok := model["size"].(float64); ok {
 					sizeGB := size / 1024 / 1024 / 1024
 					sizeStr = fmt.Sprintf("%.1f GB", sizeGB)
 				}
-
-				modifiedAt := ""
-				if modified, ok := model["modified_at"].(string); ok {
-					if t, err := time.Parse(time.RFC3339Nano, modified); err == nil {
-						modifiedAt = t.Format("2006-01-02")
-					}
-				}
-
-				fmt.Printf("  %-30s %10s   %s\n", name, sizeStr, modifiedAt)
+				fmt.Printf("  %-30s %10s\n", name, sizeStr)
 			}
 		}
 	},
 }
 
-// localChatCmd sends a chat message
+// localChatCmd sends a chat message using OpenAI-compatible API
 var localChatCmd = &cobra.Command{
 	Use:   "chat <message>",
 	Short: "Chat with local AI model",
-	Long: `Send a chat message to the local AI model.
+	Long: `Send a chat message to the local AI model using OpenAI-compatible API.
 
 Examples:
   armyknife local chat "Explain this Go code"
-  armyknife local chat "How do I implement a binary tree?" --model codellama:7b
+  armyknife local chat "How do I implement a binary tree?" --model gpt-4
   armyknife local chat "Review this function for bugs" --stream`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -183,6 +206,7 @@ Examples:
 		fmt.Printf("💬 Chat with %s\n", localModel)
 		fmt.Println(strings.Repeat("-", 50))
 
+		// OpenAI-compatible request format
 		reqBody := map[string]interface{}{
 			"model": localModel,
 			"messages": []map[string]string{
@@ -195,7 +219,7 @@ Examples:
 
 		client := &http.Client{Timeout: time.Duration(localTimeout) * time.Second}
 		resp, err := client.Post(
-			localOllamaURL+"/api/chat",
+			localAPIURL+"/v1/chat/completions",
 			"application/json",
 			bytes.NewBuffer(jsonData),
 		)
@@ -206,20 +230,34 @@ Examples:
 		defer resp.Body.Close()
 
 		if localStream {
-			// Handle streaming response
-			decoder := json.NewDecoder(resp.Body)
+			// Handle SSE streaming response
+			reader := resp.Body
+			buf := make([]byte, 4096)
 			for {
-				var chunk map[string]interface{}
-				if err := decoder.Decode(&chunk); err != nil {
+				n, err := reader.Read(buf)
+				if err != nil {
 					break
 				}
-				if message, ok := chunk["message"].(map[string]interface{}); ok {
-					if content, ok := message["content"].(string); ok {
-						fmt.Print(content)
+				lines := strings.Split(string(buf[:n]), "\n")
+				for _, line := range lines {
+					if strings.HasPrefix(line, "data: ") {
+						data := strings.TrimPrefix(line, "data: ")
+						if data == "[DONE]" {
+							break
+						}
+						var chunk map[string]interface{}
+						if json.Unmarshal([]byte(data), &chunk) == nil {
+							if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+								if choice, ok := choices[0].(map[string]interface{}); ok {
+									if delta, ok := choice["delta"].(map[string]interface{}); ok {
+										if content, ok := delta["content"].(string); ok {
+											fmt.Print(content)
+										}
+									}
+								}
+							}
+						}
 					}
-				}
-				if done, ok := chunk["done"].(bool); ok && done {
-					break
 				}
 			}
 			fmt.Println()
@@ -230,44 +268,47 @@ Examples:
 				return
 			}
 
-			if message, ok := result["message"].(map[string]interface{}); ok {
-				if content, ok := message["content"].(string); ok {
-					fmt.Println(content)
+			if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if message, ok := choice["message"].(map[string]interface{}); ok {
+						if content, ok := message["content"].(string); ok {
+							fmt.Println(content)
+						}
+					}
 				}
 			}
 
-			// Show timing info
-			if totalDuration, ok := result["total_duration"].(float64); ok {
-				fmt.Printf("\n⏱️  Total: %.2fs", totalDuration/1e9)
-				if evalCount, ok := result["eval_count"].(float64); ok {
-					tokensPerSec := evalCount / (totalDuration / 1e9)
-					fmt.Printf(" | %.1f tokens/sec", tokensPerSec)
-				}
-				fmt.Println()
+			// Show usage info
+			if usage, ok := result["usage"].(map[string]interface{}); ok {
+				fmt.Printf("\n📊 Tokens: %v prompt, %v completion, %v total\n",
+					usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"])
 			}
 		}
 	},
 }
 
-// localGenerateCmd generates text
+// localGenerateCmd generates text using OpenAI-compatible completions
 var localGenerateCmd = &cobra.Command{
 	Use:   "generate <prompt>",
 	Short: "Generate text with local AI",
-	Long: `Generate text completion from a prompt.
+	Long: `Generate text completion from a prompt using OpenAI-compatible API.
 
 Examples:
   armyknife local generate "// Function to calculate fibonacci"
   armyknife local generate "func sortSlice(s []int) []int {"
-  armyknife local generate "Write unit tests for:" --model qwen2.5-coder:7b`,
+  armyknife local generate "Write unit tests for:" --model gpt-4`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		prompt := args[0]
 
 		fmt.Printf("🤖 Generating with %s...\n\n", localModel)
 
+		// Use chat completions endpoint (more widely supported)
 		reqBody := map[string]interface{}{
-			"model":  localModel,
-			"prompt": prompt,
+			"model": localModel,
+			"messages": []map[string]string{
+				{"role": "user", "content": prompt},
+			},
 			"stream": localStream,
 		}
 
@@ -275,7 +316,7 @@ Examples:
 
 		client := &http.Client{Timeout: time.Duration(localTimeout) * time.Second}
 		resp, err := client.Post(
-			localOllamaURL+"/api/generate",
+			localAPIURL+"/v1/chat/completions",
 			"application/json",
 			bytes.NewBuffer(jsonData),
 		)
@@ -286,17 +327,33 @@ Examples:
 		defer resp.Body.Close()
 
 		if localStream {
-			decoder := json.NewDecoder(resp.Body)
+			reader := resp.Body
+			buf := make([]byte, 4096)
 			for {
-				var chunk map[string]interface{}
-				if err := decoder.Decode(&chunk); err != nil {
+				n, err := reader.Read(buf)
+				if err != nil {
 					break
 				}
-				if response, ok := chunk["response"].(string); ok {
-					fmt.Print(response)
-				}
-				if done, ok := chunk["done"].(bool); ok && done {
-					break
+				lines := strings.Split(string(buf[:n]), "\n")
+				for _, line := range lines {
+					if strings.HasPrefix(line, "data: ") {
+						data := strings.TrimPrefix(line, "data: ")
+						if data == "[DONE]" {
+							break
+						}
+						var chunk map[string]interface{}
+						if json.Unmarshal([]byte(data), &chunk) == nil {
+							if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+								if choice, ok := choices[0].(map[string]interface{}); ok {
+									if delta, ok := choice["delta"].(map[string]interface{}); ok {
+										if content, ok := delta["content"].(string); ok {
+											fmt.Print(content)
+										}
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 			fmt.Println()
@@ -307,16 +364,18 @@ Examples:
 				return
 			}
 
-			if response, ok := result["response"].(string); ok {
-				fmt.Println(response)
+			if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if message, ok := choice["message"].(map[string]interface{}); ok {
+						if content, ok := message["content"].(string); ok {
+							fmt.Println(content)
+						}
+					}
+				}
 			}
 
-			if totalDuration, ok := result["total_duration"].(float64); ok {
-				fmt.Printf("\n⏱️  %.2fs", totalDuration/1e9)
-				if evalCount, ok := result["eval_count"].(float64); ok {
-					fmt.Printf(" | %.1f tokens/sec", evalCount/(totalDuration/1e9))
-				}
-				fmt.Println()
+			if usage, ok := result["usage"].(map[string]interface{}); ok {
+				fmt.Printf("\n📊 Tokens: %v total\n", usage["total_tokens"])
 			}
 		}
 	},
@@ -331,11 +390,10 @@ var localTestCmd = &cobra.Command{
 Tests:
 1. Code completion
 2. Code explanation
-3. Bug detection
-4. Documentation generation`,
+3. Bug detection`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("🧪 Testing local model: %s\n", localModel)
-		fmt.Printf("   URL: %s\n", localOllamaURL)
+		fmt.Printf("   URL: %s\n", localAPIURL)
 		fmt.Println(strings.Repeat("=", 60))
 
 		tests := []struct {
@@ -365,19 +423,18 @@ Tests:
 			fmt.Println(strings.Repeat("-", 40))
 
 			reqBody := map[string]interface{}{
-				"model":  localModel,
-				"prompt": test.prompt,
-				"stream": false,
-				"options": map[string]interface{}{
-					"num_predict": 150,
+				"model": localModel,
+				"messages": []map[string]string{
+					{"role": "user", "content": test.prompt},
 				},
+				"max_tokens": 150,
 			}
 
 			jsonData, _ := json.Marshal(reqBody)
 			start := time.Now()
 
 			resp, err := client.Post(
-				localOllamaURL+"/api/generate",
+				localAPIURL+"/v1/chat/completions",
 				"application/json",
 				bytes.NewBuffer(jsonData),
 			)
@@ -391,20 +448,26 @@ Tests:
 			resp.Body.Close()
 
 			elapsed := time.Since(start)
+			totalTime += elapsed.Seconds()
 
-			if response, ok := result["response"].(string); ok {
-				// Truncate long responses
-				if len(response) > 300 {
-					response = response[:300] + "..."
+			if choices, ok := result["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if message, ok := choice["message"].(map[string]interface{}); ok {
+						if content, ok := message["content"].(string); ok {
+							// Truncate long responses
+							if len(content) > 300 {
+								content = content[:300] + "..."
+							}
+							fmt.Println(content)
+						}
+					}
 				}
-				fmt.Println(response)
 			}
 
-			if duration, ok := result["total_duration"].(float64); ok {
-				totalTime += duration / 1e9
-			}
-			if tokens, ok := result["eval_count"].(float64); ok {
-				totalTokens += tokens
+			if usage, ok := result["usage"].(map[string]interface{}); ok {
+				if tokens, ok := usage["total_tokens"].(float64); ok {
+					totalTokens += tokens
+				}
 			}
 
 			fmt.Printf("⏱️  %.2fs\n", elapsed.Seconds())
@@ -420,104 +483,36 @@ Tests:
 	},
 }
 
-// localPullCmd pulls a model
-var localPullCmd = &cobra.Command{
-	Use:   "pull <model>",
-	Short: "Pull a model from Ollama registry",
-	Long: `Download a model from the Ollama registry.
-
-Recommended models for code:
-  qwen2.5-coder:3b     - Fast, good for completions (2GB)
-  qwen2.5-coder:7b     - Better quality (4GB)
-  deepseek-coder:6.7b  - Strong coding model (4GB)
-  codellama:7b         - Meta's code model (4GB)
-  phi3:mini            - Microsoft's small model (2GB)
-  llama3.2:3b          - Meta's latest small model (2GB)`,
-	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		model := args[0]
-
-		fmt.Printf("📥 Pulling model: %s\n", model)
-		fmt.Printf("   This may take a while...\n\n")
-
-		reqBody := map[string]interface{}{
-			"name":   model,
-			"stream": true,
-		}
-
-		jsonData, _ := json.Marshal(reqBody)
-
-		client := &http.Client{Timeout: 30 * time.Minute} // Long timeout for downloads
-		resp, err := client.Post(
-			localOllamaURL+"/api/pull",
-			"application/json",
-			bytes.NewBuffer(jsonData),
-		)
-		if err != nil {
-			fmt.Printf("❌ Error: %v\n", err)
-			return
-		}
-		defer resp.Body.Close()
-
-		decoder := json.NewDecoder(resp.Body)
-		lastStatus := ""
-		for {
-			var chunk map[string]interface{}
-			if err := decoder.Decode(&chunk); err != nil {
-				break
-			}
-
-			status := ""
-			if s, ok := chunk["status"].(string); ok {
-				status = s
-			}
-
-			// Show progress
-			if status != lastStatus {
-				if status == "success" {
-					fmt.Printf("\n✅ Successfully pulled %s\n", model)
-				} else {
-					fmt.Printf("\r%s", status)
-				}
-				lastStatus = status
-			}
-
-			if completed, ok := chunk["completed"].(float64); ok {
-				if total, ok := chunk["total"].(float64); ok && total > 0 {
-					pct := (completed / total) * 100
-					fmt.Printf("\r%s: %.1f%%", status, pct)
-				}
-			}
-		}
-		fmt.Println()
-	},
-}
-
-// localEmbedCmd generates embeddings
+// localEmbedCmd generates embeddings using OpenAI-compatible API
 var localEmbedCmd = &cobra.Command{
 	Use:   "embed <text>",
 	Short: "Generate embeddings with local model",
-	Long: `Generate vector embeddings for text using a local model.
+	Long: `Generate vector embeddings for text using the local AI service.
 
 Examples:
   armyknife local embed "function to sort array"
-  armyknife local embed "authentication middleware" --model nomic-embed-text`,
+  armyknife local embed "authentication middleware" --model text-embedding-3-small`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		text := args[0]
 
-		fmt.Printf("🧮 Generating embedding with %s\n", localModel)
+		embeddingModel := localModel
+		if !strings.Contains(localModel, "embed") {
+			embeddingModel = "text-embedding-3-small" // Default embedding model
+		}
+
+		fmt.Printf("🧮 Generating embedding with %s\n", embeddingModel)
 
 		reqBody := map[string]interface{}{
-			"model":  localModel,
-			"prompt": text,
+			"model": embeddingModel,
+			"input": text,
 		}
 
 		jsonData, _ := json.Marshal(reqBody)
 
 		client := &http.Client{Timeout: time.Duration(localTimeout) * time.Second}
 		resp, err := client.Post(
-			localOllamaURL+"/api/embeddings",
+			localAPIURL+"/v1/embeddings",
 			"application/json",
 			bytes.NewBuffer(jsonData),
 		)
@@ -533,101 +528,167 @@ Examples:
 			return
 		}
 
-		if embedding, ok := result["embedding"].([]interface{}); ok {
-			fmt.Printf("✅ Generated embedding\n")
-			fmt.Printf("   Dimensions: %d\n", len(embedding))
-			if len(embedding) >= 3 {
-				fmt.Printf("   Preview: [%.4f, %.4f, %.4f, ...]\n",
-					embedding[0], embedding[1], embedding[2])
-			}
-		} else {
-			fmt.Printf("❌ No embedding in response\n")
-			body, _ := json.MarshalIndent(result, "", "  ")
-			fmt.Println(string(body))
-		}
-	},
-}
-
-// nodeLLMCmd tests node-llm endpoint
-var nodeLLMCmd = &cobra.Command{
-	Use:   "node-llm",
-	Short: "Test node-llm OpenAI-compatible endpoint",
-	Long: `Test the node-llm service which provides OpenAI-compatible API.
-
-node-llm runs on the gateway servers and provides:
-- /v1/chat/completions (OpenAI compatible)
-- /v1/models
-- Local model inference`,
-	Run: func(cmd *cobra.Command, args []string) {
-		nodeLLMURL := os.Getenv("NODE_LLM_URL")
-		if nodeLLMURL == "" {
-			nodeLLMURL = "http://localhost:3001" // Default node-llm port
-		}
-
-		fmt.Printf("🔌 Testing node-llm at %s\n", nodeLLMURL)
-		fmt.Println(strings.Repeat("-", 50))
-
-		client := &http.Client{Timeout: 10 * time.Second}
-
-		// Test /v1/models
-		fmt.Println("\n1. Checking available models...")
-		resp, err := client.Get(nodeLLMURL + "/v1/models")
-		if err != nil {
-			fmt.Printf("❌ Cannot connect: %v\n", err)
-			return
-		}
-		defer resp.Body.Close()
-
-		var models map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&models); err == nil {
-			if data, ok := models["data"].([]interface{}); ok {
-				fmt.Printf("✅ Found %d models:\n", len(data))
-				for _, m := range data {
-					if model, ok := m.(map[string]interface{}); ok {
-						fmt.Printf("   - %s\n", model["id"])
+		if data, ok := result["data"].([]interface{}); ok && len(data) > 0 {
+			if item, ok := data[0].(map[string]interface{}); ok {
+				if embedding, ok := item["embedding"].([]interface{}); ok {
+					fmt.Printf("✅ Generated embedding\n")
+					fmt.Printf("   Dimensions: %d\n", len(embedding))
+					if len(embedding) >= 3 {
+						fmt.Printf("   Preview: [%.4f, %.4f, %.4f, ...]\n",
+							embedding[0], embedding[1], embedding[2])
 					}
+					return
 				}
 			}
 		}
 
-		// Test chat completion
-		fmt.Println("\n2. Testing chat completion...")
-		chatReq := map[string]interface{}{
-			"model": localModel,
-			"messages": []map[string]string{
-				{"role": "user", "content": "Say 'Hello from node-llm!' in exactly 5 words."},
-			},
-			"max_tokens": 20,
+		fmt.Printf("❌ No embedding in response\n")
+		body, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(body))
+	},
+}
+
+// localHealthCmd checks all AI endpoints
+var localHealthCmd = &cobra.Command{
+	Use:   "health",
+	Short: "Check health of all local AI endpoints",
+	Long: `Check the health status of all AI-related endpoints on the local service.
+
+Tests:
+- /v1/models - Model listing
+- /v1/chat/completions - Chat endpoint
+- /v1/embeddings - Embedding endpoint`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("🏥 Health Check: %s\n", localAPIURL)
+		fmt.Println(strings.Repeat("=", 60))
+
+		client := &http.Client{Timeout: 10 * time.Second}
+
+		endpoints := []struct {
+			name   string
+			method string
+			path   string
+			body   interface{}
+		}{
+			{"Models", "GET", "/v1/models", nil},
+			{"Chat", "POST", "/v1/chat/completions", map[string]interface{}{
+				"model":      localModel,
+				"messages":   []map[string]string{{"role": "user", "content": "test"}},
+				"max_tokens": 5,
+			}},
+			{"Embeddings", "POST", "/v1/embeddings", map[string]interface{}{
+				"model": "text-embedding-3-small",
+				"input": "test",
+			}},
 		}
 
-		jsonData, _ := json.Marshal(chatReq)
-		chatResp, err := client.Post(
-			nodeLLMURL+"/v1/chat/completions",
+		for _, ep := range endpoints {
+			fmt.Printf("\n%-12s %s%s\n", ep.name+":", localAPIURL, ep.path)
+
+			var resp *http.Response
+			var err error
+
+			if ep.method == "GET" {
+				resp, err = client.Get(localAPIURL + ep.path)
+			} else {
+				jsonData, _ := json.Marshal(ep.body)
+				resp, err = client.Post(localAPIURL+ep.path, "application/json", bytes.NewBuffer(jsonData))
+			}
+
+			if err != nil {
+				fmt.Printf("   ❌ Error: %v\n", err)
+				continue
+			}
+
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				fmt.Printf("   ✅ Status: %d\n", resp.StatusCode)
+				// Parse and show brief response info
+				var result map[string]interface{}
+				if json.Unmarshal(body, &result) == nil {
+					if data, ok := result["data"].([]interface{}); ok {
+						fmt.Printf("   📊 Items: %d\n", len(data))
+					}
+					if usage, ok := result["usage"].(map[string]interface{}); ok {
+						fmt.Printf("   📊 Tokens: %v\n", usage["total_tokens"])
+					}
+				}
+			} else {
+				fmt.Printf("   ❌ Status: %d\n", resp.StatusCode)
+				fmt.Printf("   Response: %s\n", string(body)[:min(100, len(body))])
+			}
+		}
+
+		fmt.Println(strings.Repeat("=", 60))
+	},
+}
+
+// aiRouterCmd tests the AI router endpoint
+var aiRouterCmd = &cobra.Command{
+	Use:   "router <prompt>",
+	Short: "Test AI router endpoint",
+	Long: `Test the AI router endpoint that handles multi-model routing.
+
+The router can send requests to:
+- Local models (node-llm)
+- Cloud providers (OpenAI, Anthropic)
+
+Examples:
+  armyknife local router "Explain this code" --model local
+  armyknife local router "Complex analysis" --model cloud`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		prompt := args[0]
+		routerURL := os.Getenv("AI_ROUTER_URL")
+		if routerURL == "" {
+			routerURL = "http://localhost:8080"
+		}
+
+		fmt.Printf("🔀 AI Router: %s\n", routerURL)
+		fmt.Println(strings.Repeat("-", 50))
+
+		reqBody := map[string]interface{}{
+			"prompt": prompt,
+			"model":  localModel,
+			"context": map[string]string{
+				"language": "go",
+			},
+		}
+
+		jsonData, _ := json.Marshal(reqBody)
+
+		client := &http.Client{Timeout: time.Duration(localTimeout) * time.Second}
+		resp, err := client.Post(
+			routerURL+"/api/v1/ai/route",
 			"application/json",
 			bytes.NewBuffer(jsonData),
 		)
 		if err != nil {
-			fmt.Printf("❌ Chat error: %v\n", err)
+			fmt.Printf("❌ Error: %v\n", err)
 			return
 		}
-		defer chatResp.Body.Close()
+		defer resp.Body.Close()
 
-		var chatResult map[string]interface{}
-		if err := json.NewDecoder(chatResp.Body).Decode(&chatResult); err == nil {
-			if choices, ok := chatResult["choices"].([]interface{}); ok && len(choices) > 0 {
-				if choice, ok := choices[0].(map[string]interface{}); ok {
-					if message, ok := choice["message"].(map[string]interface{}); ok {
-						fmt.Printf("✅ Response: %s\n", message["content"])
-					}
-				}
-			}
-			if usage, ok := chatResult["usage"].(map[string]interface{}); ok {
-				fmt.Printf("   Tokens: %v prompt, %v completion\n",
-					usage["prompt_tokens"], usage["completion_tokens"])
-			}
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			fmt.Printf("❌ Error parsing response: %v\n", err)
+			return
 		}
 
-		fmt.Println("\n✅ node-llm is working!")
+		if result["success"] == true {
+			if data, ok := result["data"].(map[string]interface{}); ok {
+				fmt.Printf("✅ Response from %s (%s):\n\n",
+					data["provider"], data["model_used"])
+				fmt.Println(data["response"])
+				if latency, ok := data["latency_ms"].(float64); ok {
+					fmt.Printf("\n⏱️  Latency: %.0fms\n", latency)
+				}
+			}
+		} else {
+			fmt.Printf("❌ Router error: %v\n", result["error"])
+		}
 	},
 }
 
@@ -640,13 +701,21 @@ func init() {
 	localCmd.AddCommand(localChatCmd)
 	localCmd.AddCommand(localGenerateCmd)
 	localCmd.AddCommand(localTestCmd)
-	localCmd.AddCommand(localPullCmd)
 	localCmd.AddCommand(localEmbedCmd)
-	localCmd.AddCommand(nodeLLMCmd)
+	localCmd.AddCommand(localHealthCmd)
+	localCmd.AddCommand(aiRouterCmd)
 
 	// Global flags for local commands
-	localCmd.PersistentFlags().StringVar(&localOllamaURL, "ollama-url", "http://localhost:11434", "Ollama API URL")
-	localCmd.PersistentFlags().StringVar(&localModel, "model", "qwen2.5-coder:3b", "Model to use")
-	localCmd.PersistentFlags().BoolVar(&localStream, "stream", true, "Stream responses")
+	localCmd.PersistentFlags().StringVar(&localAPIURL, "api-url", "http://localhost:11434", "Local AI API URL (OpenAI-compatible)")
+	localCmd.PersistentFlags().StringVar(&localModel, "model", "gpt-4", "Model to use")
+	localCmd.PersistentFlags().BoolVar(&localStream, "stream", false, "Stream responses")
 	localCmd.PersistentFlags().IntVar(&localTimeout, "timeout", 120, "Request timeout in seconds")
+	localCmd.PersistentFlags().StringVar(&localBackend, "backend", "auto", "Backend type: auto, node-llm, ollama")
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
