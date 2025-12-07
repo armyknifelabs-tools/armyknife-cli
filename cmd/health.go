@@ -29,20 +29,26 @@ var healthCmd = &cobra.Command{
 
 		output.Header("System Health Check")
 
-		// Check backend health
-		resp, err := c.Get("/health")
+		// Check backend health - use base URL (not /api/v1)
+		healthURL := c.GetBaseURL() + "/health"
+		respBody, err := c.GetRaw(healthURL)
 		if err != nil {
 			output.Error(fmt.Sprintf("❌ Backend health check failed: %v", err))
 			return err
 		}
 
-		var health types.HealthStatus
-		if err := json.Unmarshal(resp.Data, &health); err != nil {
+		var health struct {
+			Status      string `json:"status"`
+			Timestamp   string `json:"timestamp"`
+			Uptime      float64 `json:"uptime"`
+			Environment string `json:"environment"`
+		}
+		if err := json.Unmarshal(respBody, &health); err != nil {
 			return fmt.Errorf("failed to parse health response: %w", err)
 		}
 
-		if health.Status == "healthy" {
-			output.Success("✅ Backend: Healthy")
+		if health.Status == "ok" {
+			output.Success(fmt.Sprintf("✅ Backend: Healthy (uptime: %.0fs, env: %s)", health.Uptime, health.Environment))
 		} else {
 			output.Warning(fmt.Sprintf("⚠️  Backend: %s", health.Status))
 		}

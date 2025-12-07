@@ -64,19 +64,25 @@ var providersCmd = &cobra.Command{
 			return fmt.Errorf("failed to fetch providers: %w", err)
 		}
 
-		var providers []types.ProviderInfo
-		if err := json.Unmarshal(resp.Data, &providers); err != nil {
+		// API returns {providers: [...], configured: [...], available: int}
+		var result struct {
+			Providers  []types.ProviderInfo `json:"providers"`
+			Configured []string             `json:"configured"`
+			Available  int                  `json:"available"`
+		}
+		if err := json.Unmarshal(resp.Data, &result); err != nil {
 			return fmt.Errorf("failed to parse providers: %w", err)
 		}
+		providers := result.Providers
 
 		fmt.Println()
 		for _, p := range providers {
-			display := providerDisplay[p.ID]
 			status := "❌ Not Connected"
 			if p.IsConnected {
 				status = "✅ Connected"
 			}
-			fmt.Printf("%s %s (%s)\n", display.icon, p.DisplayName, status)
+			// Use icon from API response directly
+			fmt.Printf("%s %s (%s)\n", p.Icon, p.DisplayName, status)
 			fmt.Printf("   Capabilities: %s\n", strings.Join(p.Capabilities, ", "))
 			fmt.Println()
 		}

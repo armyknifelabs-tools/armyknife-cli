@@ -68,6 +68,46 @@ func (c *Client) Patch(path string, body interface{}) (*APIResponse, error) {
 	return c.request("PATCH", path, body)
 }
 
+// GetBaseURL returns the base URL (without /api/v1)
+func (c *Client) GetBaseURL() string {
+	// Strip /api/v1 from the API URL to get base URL
+	baseURL := c.cfg.APIURL
+	if len(baseURL) > 7 && baseURL[len(baseURL)-7:] == "/api/v1" {
+		baseURL = baseURL[:len(baseURL)-7]
+	}
+	return baseURL
+}
+
+// GetRaw performs a GET request to a raw URL (not prefixed with API base)
+func (c *Client) GetRaw(url string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.cfg.AccessToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.cfg.AccessToken))
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
 // request performs an HTTP request
 func (c *Client) request(method, path string, body interface{}) (*APIResponse, error) {
 	url := fmt.Sprintf("%s%s", c.cfg.APIURL, path)
