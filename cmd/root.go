@@ -45,7 +45,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("ArmyKnife CLI v0.5.0")
+		fmt.Println("ArmyKnife CLI v0.6.0")
 		fmt.Println()
 		fmt.Println("Features:")
 		fmt.Println("  - Multi-provider Git support (GitHub, GitLab, Bitbucket, Azure DevOps)")
@@ -58,6 +58,7 @@ var versionCmd = &cobra.Command{
 		fmt.Println("  - LLM Gateway with hybrid search and dual embeddings")
 		fmt.Println("  - Repository ingestion pipeline (ingest → index → analyze → search)")
 		fmt.Println("  - AI-powered repository analysis (codebase, patterns, issues, wiki)")
+		fmt.Println("  - Local AI model testing (Ollama, node-llm)")
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("  auth       - OAuth device flow authentication")
@@ -70,6 +71,7 @@ var versionCmd = &cobra.Command{
 		fmt.Println("  vault      - Secrets management")
 		fmt.Println("  cache      - Cache operations")
 		fmt.Println("  gateway    - LLM Gateway (ingest, index, analyze, search)")
+		fmt.Println("  local      - Local AI (Ollama, node-llm testing)")
 		fmt.Println("  health     - System health checks")
 	},
 }
