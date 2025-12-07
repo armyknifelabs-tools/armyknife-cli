@@ -645,6 +645,623 @@ Providers:
 	},
 }
 
+// ingestCmd represents the ingest subcommand group
+var ingestCmd = &cobra.Command{
+	Use:   "ingest",
+	Short: "Ingest repositories for RAG indexing",
+	Long: `Ingest repository code and documentation into the RAG pipeline.
+
+Workflow: ingest → index → analyze → search
+
+Operations:
+- repo: Ingest a single repository
+- org: Ingest all repos in an organization
+- status: Check ingestion job status
+- history: View ingestion history
+
+Examples:
+  armyknife gateway ingest repo --owner myorg --repo myrepo
+  armyknife gateway ingest org --owner myorg --schedule-daily
+  armyknife gateway ingest status job-123`,
+}
+
+var (
+	ingestOwner         string
+	ingestRepo          string
+	ingestIncludeCode   bool
+	ingestIncludeDocs   bool
+	ingestIncludeTests  bool
+	ingestScheduleDaily bool
+	ingestMaxFileSizeKB int
+)
+
+// ingestRepoCmd ingests a single repository
+var ingestRepoCmd = &cobra.Command{
+	Use:   "repo",
+	Short: "Ingest a single repository",
+	Long: `Ingest a single repository's code and documentation for RAG.
+
+By default, only documentation files (*.md, README, etc.) are ingested.
+Use flags to include source code and test files.
+
+Examples:
+  armyknife gateway ingest repo --owner armyknifelabs --repo backend
+  armyknife gateway ingest repo --owner myorg --repo myrepo --include-code
+  armyknife gateway ingest repo --owner myorg --repo myrepo --include-code --include-tests`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if ingestOwner == "" || ingestRepo == "" {
+			fmt.Println("❌ Error: --owner and --repo are required")
+			os.Exit(1)
+		}
+
+		fmt.Printf("📥 Ingesting repository: %s/%s\n", ingestOwner, ingestRepo)
+		fmt.Printf("   Include Code: %v | Include Docs: %v | Include Tests: %v\n\n",
+			ingestIncludeCode, ingestIncludeDocs, ingestIncludeTests)
+
+		reqBody := map[string]interface{}{
+			"owner":         ingestOwner,
+			"repo":          ingestRepo,
+			"includeCode":   ingestIncludeCode,
+			"includeDocs":   ingestIncludeDocs,
+			"includeTests":  ingestIncludeTests,
+			"maxFileSizeKB": ingestMaxFileSizeKB,
+		}
+
+		jsonData, _ := json.Marshal(reqBody)
+
+		resp, err := http.Post(
+			fmt.Sprintf("%s/rag/ingest/repo", apiURL),
+			"application/json",
+			bytes.NewBuffer(jsonData),
+		)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+			fmt.Printf("✅ Ingestion queued!\n")
+			if jobId, ok := data["jobId"].(string); ok {
+				fmt.Printf("   Job ID: %s\n", jobId)
+			}
+			if status, ok := data["status"].(string); ok {
+				fmt.Printf("   Status: %s\n", status)
+			}
+			if msg, ok := data["message"].(string); ok {
+				fmt.Printf("   %s\n", msg)
+			}
+			if checkUrl, ok := data["checkStatusUrl"].(string); ok {
+				fmt.Printf("\n   Check status: armyknife gateway ingest status <jobId>\n")
+				fmt.Printf("   API: %s%s\n", apiURL, checkUrl)
+			}
+		} else {
+			if errData, ok := result["error"].(map[string]interface{}); ok {
+				fmt.Printf("❌ Error: %v\n", errData["message"])
+			} else {
+				fmt.Printf("❌ Ingestion failed\n")
+			}
+		}
+	},
+}
+
+// ingestOrgCmd ingests an entire organization
+var ingestOrgCmd = &cobra.Command{
+	Use:   "org",
+	Short: "Ingest all repositories in an organization",
+	Long: `Ingest all repositories in an organization for RAG.
+
+Can optionally schedule daily re-ingestion at 2 AM.
+
+Examples:
+  armyknife gateway ingest org --owner armyknifelabs
+  armyknife gateway ingest org --owner myorg --schedule-daily
+  armyknife gateway ingest org --owner myorg --include-code --include-docs`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if ingestOwner == "" {
+			fmt.Println("❌ Error: --owner is required")
+			os.Exit(1)
+		}
+
+		fmt.Printf("📥 Ingesting organization: %s\n", ingestOwner)
+		fmt.Printf("   Include Code: %v | Include Docs: %v | Include Tests: %v\n",
+			ingestIncludeCode, ingestIncludeDocs, ingestIncludeTests)
+		if ingestScheduleDaily {
+			fmt.Printf("   ⏰ Daily ingestion scheduled at 2 AM\n")
+		}
+		fmt.Println()
+
+		reqBody := map[string]interface{}{
+			"owner":         ingestOwner,
+			"includeCode":   ingestIncludeCode,
+			"includeDocs":   ingestIncludeDocs,
+			"includeTests":  ingestIncludeTests,
+			"maxFileSizeKB": ingestMaxFileSizeKB,
+			"scheduleDaily": ingestScheduleDaily,
+		}
+
+		jsonData, _ := json.Marshal(reqBody)
+
+		resp, err := http.Post(
+			fmt.Sprintf("%s/rag/ingest/org", apiURL),
+			"application/json",
+			bytes.NewBuffer(jsonData),
+		)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+			fmt.Printf("✅ Organization ingestion queued!\n")
+			if jobId, ok := data["jobId"].(string); ok {
+				fmt.Printf("   Job ID: %s\n", jobId)
+			}
+			if repos, ok := data["reposToProcess"].(float64); ok {
+				fmt.Printf("   Repos to process: %d\n", int(repos))
+			}
+			if msg, ok := data["message"].(string); ok {
+				fmt.Printf("   %s\n", msg)
+			}
+			if est, ok := data["estimatedTime"].(string); ok {
+				fmt.Printf("   Estimated time: %s\n", est)
+			}
+		} else {
+			if errData, ok := result["error"].(map[string]interface{}); ok {
+				fmt.Printf("❌ Error: %v\n", errData["message"])
+			} else {
+				fmt.Printf("❌ Organization ingestion failed\n")
+			}
+		}
+	},
+}
+
+// ingestStatusCmd checks ingestion job status
+var ingestStatusCmd = &cobra.Command{
+	Use:   "status <jobId>",
+	Short: "Check ingestion job status",
+	Long:  `Check the status of an ingestion job by its job ID.`,
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		jobId := args[0]
+
+		fmt.Printf("🔍 Checking status for job: %s\n\n", jobId)
+
+		resp, err := http.Get(fmt.Sprintf("%s/rag/ingest/status/%s", apiURL, jobId))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+
+			status := data["status"].(string)
+			statusIcon := "⏳"
+			switch status {
+			case "completed":
+				statusIcon = "✅"
+			case "failed":
+				statusIcon = "❌"
+			case "cancelled":
+				statusIcon = "⚪"
+			case "processing":
+				statusIcon = "🔄"
+			}
+
+			fmt.Printf("%s Status: %s\n", statusIcon, status)
+			if owner, ok := data["owner"].(string); ok {
+				fmt.Printf("   Owner: %s\n", owner)
+			}
+			if repo, ok := data["repo"].(string); ok {
+				fmt.Printf("   Repo: %s\n", repo)
+			}
+			if files, ok := data["filesIngested"].(float64); ok {
+				fmt.Printf("   Files ingested: %d\n", int(files))
+			}
+			if skipped, ok := data["filesSkipped"].(float64); ok && skipped > 0 {
+				fmt.Printf("   Files skipped: %d\n", int(skipped))
+			}
+			if errors, ok := data["errors"].(float64); ok && errors > 0 {
+				fmt.Printf("   Errors: %d\n", int(errors))
+			}
+			if duration, ok := data["duration"].(float64); ok && duration > 0 {
+				fmt.Printf("   Duration: %ds\n", int(duration))
+			}
+			if msg, ok := data["message"].(string); ok {
+				fmt.Printf("\n   %s\n", msg)
+			}
+		} else {
+			if errData, ok := result["error"].(map[string]interface{}); ok {
+				fmt.Printf("❌ Error: %v\n", errData["message"])
+			} else {
+				fmt.Printf("❌ Failed to get job status\n")
+			}
+		}
+	},
+}
+
+// ingestHistoryCmd shows ingestion history
+var ingestHistoryCmd = &cobra.Command{
+	Use:   "history",
+	Short: "View ingestion history",
+	Long: `View history of ingestion jobs.
+
+Examples:
+  armyknife gateway ingest history
+  armyknife gateway ingest history --owner myorg
+  armyknife gateway ingest history --owner myorg --repo myrepo`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("📜 Ingestion History\n")
+		fmt.Println(strings.Repeat("-", 60))
+
+		url := fmt.Sprintf("%s/rag/ingest/history?limit=%d", apiURL, searchLimit)
+		if ingestOwner != "" {
+			url += "&owner=" + ingestOwner
+		}
+		if ingestRepo != "" {
+			url += "&repo=" + ingestRepo
+		}
+
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+			jobs := data["jobs"].([]interface{})
+
+			if len(jobs) == 0 {
+				fmt.Println("No ingestion history found.")
+				return
+			}
+
+			for _, j := range jobs {
+				job := j.(map[string]interface{})
+				status := job["status"].(string)
+				statusIcon := "⏳"
+				switch status {
+				case "completed":
+					statusIcon = "✅"
+				case "failed":
+					statusIcon = "❌"
+				case "cancelled":
+					statusIcon = "⚪"
+				}
+
+				fmt.Printf("%s %s/%s\n", statusIcon, job["owner"], job["repo"])
+				if jobId, ok := job["jobId"].(string); ok {
+					fmt.Printf("   Job ID: %s\n", jobId)
+				}
+				if files, ok := job["filesIngested"].(float64); ok {
+					fmt.Printf("   Files: %d ingested", int(files))
+					if skipped, ok := job["filesSkipped"].(float64); ok && skipped > 0 {
+						fmt.Printf(", %d skipped", int(skipped))
+					}
+					fmt.Println()
+				}
+				fmt.Println()
+			}
+
+			if pagination, ok := data["pagination"].(map[string]interface{}); ok {
+				if total, ok := pagination["total"].(float64); ok {
+					fmt.Printf("Total: %d jobs\n", int(total))
+				}
+			}
+		} else {
+			fmt.Printf("❌ Failed to get ingestion history\n")
+		}
+	},
+}
+
+// analyzeCmd represents the analyze subcommand group
+var analyzeCmd = &cobra.Command{
+	Use:   "analyze",
+	Short: "AI-powered code analysis",
+	Long: `AI-powered repository analysis using Claude/GPT.
+
+Analysis types:
+- codebaseExplain: Overall codebase explanation
+- patterns: Coding patterns detection
+- issues: Issues summarization
+- wiki: Wiki/Discussions discovery
+- copilot: Comprehensive Copilot analysis
+
+Workflow: ingest → index → analyze → search
+
+Examples:
+  armyknife gateway analyze run --owner myorg --repo myrepo --type codebaseExplain
+  armyknife gateway analyze status job-123
+  armyknife gateway analyze results --owner myorg --repo myrepo`,
+}
+
+var (
+	analyzeType    string
+	analyzeForce   bool
+)
+
+// analyzeRunCmd runs AI analysis
+var analyzeRunCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Run AI analysis on a repository",
+	Long: `Queue AI-powered analysis on a repository.
+
+Analysis types:
+- codebaseExplain: Overall codebase explanation and architecture
+- patterns: Detect coding patterns and best practices
+- issues: Summarize open issues and priorities
+- wiki: Discover and analyze wiki/docs
+- copilot: Comprehensive GitHub Copilot-style analysis
+
+Analysis runs asynchronously - use 'status' to check progress.
+
+Examples:
+  armyknife gateway analyze run --owner myorg --repo myrepo --type codebaseExplain
+  armyknife gateway analyze run --owner myorg --repo myrepo --type patterns
+  armyknife gateway analyze run --owner myorg --repo myrepo --type copilot --force`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if ingestOwner == "" || ingestRepo == "" {
+			fmt.Println("❌ Error: --owner and --repo are required")
+			os.Exit(1)
+		}
+
+		fmt.Printf("🤖 Queuing AI analysis: %s\n", analyzeType)
+		fmt.Printf("   Repository: %s/%s\n", ingestOwner, ingestRepo)
+		if analyzeForce {
+			fmt.Printf("   Force refresh: yes\n")
+		}
+		fmt.Println()
+
+		reqBody := map[string]interface{}{
+			"owner":        ingestOwner,
+			"repo":         ingestRepo,
+			"analysisType": analyzeType,
+			"forceRefresh": analyzeForce,
+		}
+
+		jsonData, _ := json.Marshal(reqBody)
+
+		resp, err := http.Post(
+			fmt.Sprintf("%s/github/ai-analyze", apiURL),
+			"application/json",
+			bytes.NewBuffer(jsonData),
+		)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+			status := data["status"].(string)
+
+			if status == "cached" {
+				fmt.Printf("✅ Analysis cached (returning existing result)\n")
+				if analysis, ok := data["analysis"].(string); ok {
+					fmt.Println(strings.Repeat("-", 60))
+					fmt.Println(analysis)
+				}
+				if stale, ok := data["stale"].(bool); ok && stale {
+					fmt.Printf("\n⚠️  Result is stale - background refresh queued\n")
+				}
+			} else {
+				fmt.Printf("✅ Analysis queued!\n")
+				if jobId, ok := data["jobId"].(string); ok {
+					fmt.Printf("   Job ID: %s\n", jobId)
+					fmt.Printf("\n   Check status: armyknife gateway analyze status %s\n", jobId)
+				}
+				if msg, ok := data["message"].(string); ok {
+					fmt.Printf("   %s\n", msg)
+				}
+			}
+		} else {
+			if errData, ok := result["error"].(map[string]interface{}); ok {
+				fmt.Printf("❌ Error: %v\n", errData["message"])
+			} else {
+				fmt.Printf("❌ Analysis failed\n")
+			}
+		}
+	},
+}
+
+// analyzeStatusCmd checks analysis job status
+var analyzeStatusCmd = &cobra.Command{
+	Use:   "status <jobId>",
+	Short: "Check AI analysis job status",
+	Long:  `Check the status of an AI analysis job by its job ID.`,
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		jobId := args[0]
+
+		fmt.Printf("🔍 Checking analysis status: %s\n\n", jobId)
+
+		resp, err := http.Get(fmt.Sprintf("%s/github/ai-analyze/status/%s", apiURL, jobId))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+
+			status := data["status"].(string)
+			statusIcon := "⏳"
+			switch status {
+			case "completed":
+				statusIcon = "✅"
+			case "failed":
+				statusIcon = "❌"
+			case "processing":
+				statusIcon = "🔄"
+			}
+
+			fmt.Printf("%s Status: %s\n", statusIcon, status)
+			if progress, ok := data["progress"].(float64); ok {
+				fmt.Printf("   Progress: %.0f%%\n", progress)
+			}
+
+			if status == "completed" {
+				if analysis, ok := data["analysis"].(string); ok {
+					fmt.Println(strings.Repeat("-", 60))
+					fmt.Println(analysis)
+				}
+			}
+
+			if status == "failed" {
+				if errMsg, ok := data["error"].(string); ok {
+					fmt.Printf("   Error: %s\n", errMsg)
+				}
+			}
+		} else {
+			if errData, ok := result["error"].(map[string]interface{}); ok {
+				fmt.Printf("❌ Error: %v\n", errData["message"])
+			} else {
+				fmt.Printf("❌ Failed to get analysis status\n")
+			}
+		}
+	},
+}
+
+// analyzeResultsCmd gets all analysis results for a repo
+var analyzeResultsCmd = &cobra.Command{
+	Use:   "results",
+	Short: "Get all AI analysis results for a repository",
+	Long: `Get all cached AI analysis results for a repository.
+
+Examples:
+  armyknife gateway analyze results --owner myorg --repo myrepo`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if ingestOwner == "" || ingestRepo == "" {
+			fmt.Println("❌ Error: --owner and --repo are required")
+			os.Exit(1)
+		}
+
+		fmt.Printf("📊 AI Analysis Results: %s/%s\n", ingestOwner, ingestRepo)
+		fmt.Println(strings.Repeat("-", 60))
+
+		resp, err := http.Get(fmt.Sprintf("%s/github/ai-analyze/%s/%s", apiURL, ingestOwner, ingestRepo))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+
+			if analyses, ok := data["analyses"].(map[string]interface{}); ok {
+				if len(analyses) == 0 {
+					fmt.Println("No analysis results found. Run 'armyknife gateway analyze run' first.")
+					return
+				}
+
+				for analysisType, analysisData := range analyses {
+					fmt.Printf("\n📝 %s\n", analysisType)
+					if ad, ok := analysisData.(map[string]interface{}); ok {
+						if analysis, ok := ad["analysis"].(string); ok {
+							// Truncate long analyses
+							preview := analysis
+							if len(preview) > 500 {
+								preview = preview[:500] + "..."
+							}
+							fmt.Println(preview)
+						}
+						if timestamp, ok := ad["generatedAt"].(string); ok {
+							fmt.Printf("\n   Generated: %s\n", timestamp)
+						}
+					}
+					fmt.Println()
+				}
+			}
+		} else {
+			if errData, ok := result["error"].(map[string]interface{}); ok {
+				fmt.Printf("❌ Error: %v\n", errData["message"])
+			} else {
+				fmt.Printf("❌ Failed to get analysis results\n")
+			}
+		}
+	},
+}
+
+// analyzeStatsCmd gets AI analysis statistics
+var analyzeStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Get AI analysis job queue statistics",
+	Long:  `Get statistics about the AI analysis job queue.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("📊 AI Analysis Statistics\n")
+		fmt.Println(strings.Repeat("-", 40))
+
+		resp, err := http.Get(fmt.Sprintf("%s/github/ai-analyze/stats", apiURL))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		var result map[string]interface{}
+		json.Unmarshal(body, &result)
+
+		if result["success"] == true {
+			data := result["data"].(map[string]interface{})
+			if stats, ok := data["stats"].(map[string]interface{}); ok {
+				if waiting, ok := stats["waiting"].(float64); ok {
+					fmt.Printf("   Waiting: %d\n", int(waiting))
+				}
+				if active, ok := stats["active"].(float64); ok {
+					fmt.Printf("   Active: %d\n", int(active))
+				}
+				if completed, ok := stats["completed"].(float64); ok {
+					fmt.Printf("   Completed: %d\n", int(completed))
+				}
+				if failed, ok := stats["failed"].(float64); ok {
+					fmt.Printf("   Failed: %d\n", int(failed))
+				}
+			}
+		} else {
+			fmt.Printf("❌ Failed to get statistics\n")
+		}
+	},
+}
+
 // explainRankingCmd explains search ranking
 var explainRankingCmd = &cobra.Command{
 	Use:   "explain-ranking <query>",
@@ -741,12 +1358,26 @@ func init() {
 	gatewayCmd.AddCommand(gatewayRagCmd)
 	gatewayCmd.AddCommand(embeddingCmd)
 	gatewayCmd.AddCommand(explainRankingCmd)
+	gatewayCmd.AddCommand(ingestCmd)
+	gatewayCmd.AddCommand(analyzeCmd)
 
 	// RAG subcommands
 	gatewayRagCmd.AddCommand(ragSearchCmd)
 	gatewayRagCmd.AddCommand(ragExplainCmd)
 	gatewayRagCmd.AddCommand(ragSimilarCmd)
 	gatewayRagCmd.AddCommand(ragIndexCmd)
+
+	// Ingest subcommands
+	ingestCmd.AddCommand(ingestRepoCmd)
+	ingestCmd.AddCommand(ingestOrgCmd)
+	ingestCmd.AddCommand(ingestStatusCmd)
+	ingestCmd.AddCommand(ingestHistoryCmd)
+
+	// Analyze subcommands
+	analyzeCmd.AddCommand(analyzeRunCmd)
+	analyzeCmd.AddCommand(analyzeStatusCmd)
+	analyzeCmd.AddCommand(analyzeResultsCmd)
+	analyzeCmd.AddCommand(analyzeStatsCmd)
 
 	// Hybrid search flags
 	hybridSearchCmd.Flags().StringVar(&searchMode, "mode", "hybrid", "Search mode: hybrid, vector, bm25")
@@ -775,4 +1406,35 @@ func init() {
 
 	// Embedding flags
 	embeddingCmd.Flags().StringVar(&embeddingProvider, "provider", "auto", "Embedding provider: auto, local, openai, voyage, ollama")
+
+	// Ingest repo flags
+	ingestRepoCmd.Flags().StringVar(&ingestOwner, "owner", "", "Repository owner (required)")
+	ingestRepoCmd.Flags().StringVar(&ingestRepo, "repo", "", "Repository name (required)")
+	ingestRepoCmd.Flags().BoolVar(&ingestIncludeCode, "include-code", false, "Include source code files")
+	ingestRepoCmd.Flags().BoolVar(&ingestIncludeDocs, "include-docs", true, "Include documentation files (default: true)")
+	ingestRepoCmd.Flags().BoolVar(&ingestIncludeTests, "include-tests", false, "Include test files")
+	ingestRepoCmd.Flags().IntVar(&ingestMaxFileSizeKB, "max-file-size", 500, "Maximum file size in KB")
+
+	// Ingest org flags
+	ingestOrgCmd.Flags().StringVar(&ingestOwner, "owner", "", "Organization owner (required)")
+	ingestOrgCmd.Flags().BoolVar(&ingestIncludeCode, "include-code", false, "Include source code files")
+	ingestOrgCmd.Flags().BoolVar(&ingestIncludeDocs, "include-docs", true, "Include documentation files (default: true)")
+	ingestOrgCmd.Flags().BoolVar(&ingestIncludeTests, "include-tests", false, "Include test files")
+	ingestOrgCmd.Flags().IntVar(&ingestMaxFileSizeKB, "max-file-size", 500, "Maximum file size in KB")
+	ingestOrgCmd.Flags().BoolVar(&ingestScheduleDaily, "schedule-daily", false, "Schedule daily re-ingestion at 2 AM")
+
+	// Ingest history flags
+	ingestHistoryCmd.Flags().StringVar(&ingestOwner, "owner", "", "Filter by owner")
+	ingestHistoryCmd.Flags().StringVar(&ingestRepo, "repo", "", "Filter by repo")
+	ingestHistoryCmd.Flags().IntVar(&searchLimit, "limit", 20, "Maximum results to return")
+
+	// Analyze run flags
+	analyzeRunCmd.Flags().StringVar(&ingestOwner, "owner", "", "Repository owner (required)")
+	analyzeRunCmd.Flags().StringVar(&ingestRepo, "repo", "", "Repository name (required)")
+	analyzeRunCmd.Flags().StringVar(&analyzeType, "type", "codebaseExplain", "Analysis type: codebaseExplain, patterns, issues, wiki, copilot")
+	analyzeRunCmd.Flags().BoolVar(&analyzeForce, "force", false, "Force refresh (ignore cache)")
+
+	// Analyze results flags
+	analyzeResultsCmd.Flags().StringVar(&ingestOwner, "owner", "", "Repository owner (required)")
+	analyzeResultsCmd.Flags().StringVar(&ingestRepo, "repo", "", "Repository name (required)")
 }
