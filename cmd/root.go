@@ -33,7 +33,7 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "https://test.armyknifelabs.com/api/v1", "API base URL")
+	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "https://api.armyknifelabs.com/api/v1", "API base URL")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.armyknife/config.json)")
 }
 
@@ -45,7 +45,28 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("ArmyKnife CLI v0.1.0")
+		fmt.Println("ArmyKnife CLI v0.3.0")
+		fmt.Println()
+		fmt.Println("Features:")
+		fmt.Println("  - Multi-provider Git support (GitHub, GitLab, Bitbucket, Azure DevOps)")
+		fmt.Println("  - RAG-powered semantic code search and analysis")
+		fmt.Println("  - Developer workflow automation (GitFlow, pre-commit, PR creation)")
+		fmt.Println("  - DORA metrics and developer velocity tracking")
+		fmt.Println("  - AI-powered code analysis and suggestions")
+		fmt.Println("  - HashiCorp Vault secrets management")
+		fmt.Println("  - Cache management and monitoring")
+		fmt.Println()
+		fmt.Println("Commands:")
+		fmt.Println("  auth       - OAuth device flow authentication")
+		fmt.Println("  git        - Multi-provider Git operations")
+		fmt.Println("  github     - GitHub-specific operations")
+		fmt.Println("  rag        - RAG semantic search and embeddings")
+		fmt.Println("  workflow   - Developer workflow automation")
+		fmt.Println("  dora       - DORA metrics and analytics")
+		fmt.Println("  ai         - AI-powered code analysis")
+		fmt.Println("  vault      - Secrets management")
+		fmt.Println("  cache      - Cache operations")
+		fmt.Println("  health     - System health checks")
 	},
 }
 

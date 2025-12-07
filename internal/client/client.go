@@ -63,6 +63,11 @@ func (c *Client) Delete(path string) (*APIResponse, error) {
 	return c.request("DELETE", path, nil)
 }
 
+// Patch performs a PATCH request
+func (c *Client) Patch(path string, body interface{}) (*APIResponse, error) {
+	return c.request("PATCH", path, body)
+}
+
 // request performs an HTTP request
 func (c *Client) request(method, path string, body interface{}) (*APIResponse, error) {
 	url := fmt.Sprintf("%s%s", c.cfg.APIURL, path)
