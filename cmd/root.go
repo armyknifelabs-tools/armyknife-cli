@@ -45,7 +45,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("ArmyKnife CLI v0.6.0")
+		fmt.Println("ArmyKnife CLI v0.7.0")
 		fmt.Println()
 		fmt.Println("Features:")
 		fmt.Println("  - Multi-provider Git support (GitHub, GitLab, Bitbucket, Azure DevOps)")
@@ -59,6 +59,8 @@ var versionCmd = &cobra.Command{
 		fmt.Println("  - Repository ingestion pipeline (ingest → index → analyze → search)")
 		fmt.Println("  - AI-powered repository analysis (codebase, patterns, issues, wiki)")
 		fmt.Println("  - Local AI model testing (Ollama, node-llm)")
+		fmt.Println("  - AI code review (security, patterns, standards, architecture)")
+		fmt.Println("  - Voice AI (Speech-to-Text with Parakeet, Text-to-Speech)")
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("  auth       - OAuth device flow authentication")
@@ -72,6 +74,8 @@ var versionCmd = &cobra.Command{
 		fmt.Println("  cache      - Cache operations")
 		fmt.Println("  gateway    - LLM Gateway (ingest, index, analyze, search)")
 		fmt.Println("  local      - Local AI (Ollama, node-llm testing)")
+		fmt.Println("  review     - AI code review (security, patterns, standards)")
+		fmt.Println("  voice      - Voice AI (STT/TTS with Parakeet)")
 		fmt.Println("  health     - System health checks")
 	},
 }
